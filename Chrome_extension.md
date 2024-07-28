@@ -338,6 +338,94 @@ await chrome.cookies.set({
 
 
 
+## 侧边栏
+
+创建一个侧边栏，拿下来举例子，假设有一个名为`sidePanel.html`的侧边栏
+
+1.   配置webpack.config.js
+
+     ```js
+     ... 
+     entry: {
+         main: paths.appIndexJs,
+         content: "./src/content/index.js",
+         background: "./src/background/index.js",
+         panel: "./src/sidePanel/index.jsx"   # 配置入口文件
+     },
+     ...
+     plugins: [
+         ...
+         # 配置插件
+         new HtmlWebpackPlugin({
+             title: 'sidePanel',
+             template: path.resolve(__dirname, '../public/sidePanel.html'),  # 需要在public文件夹下创建html文件。
+             filename: 'sidePanel.html',  # 打包后的文件名
+             chunks:["panel"],  # 选择入口文件
+         }),
+        ...
+        
+     ```
+
+2.   创建html文件`public/sidePanel.html`
+
+     ```html
+     <!DOCTYPE html>
+     <html lang="en">
+       <head>
+         <meta charset="utf-8" />
+         <link rel="icon" href="%PUBLIC_URL%/favicon.ico" />
+         <meta name="viewport" content="width=device-width, initial-scale=1" />
+         <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
+     
+         <title>Forty Extension -- SidePannel</title>
+       </head>
+       <body>
+         <div id="M-root"></div>
+     
+       </body>
+     </html>
+     
+     ```
+
+3.   在`manifest.json`添加permissions权限
+
+     ```json
+     "permissions": [
+         "sidePanel"
+     ],
+     "side_panel": {
+         "default_path": "sidePanel.html"
+     },
+     ```
+
+4.   触发打开侧边栏事件
+
+     ```js
+     // background.js
+     /*global chrome*/
+     
+     // 在上下文中设置openSidePanel事件
+     chrome.runtime.onInstalled.addListener(() => {
+     chrome.contextMenus.create({
+         id: 'openSidePanel',
+         title: 'Open side panel',
+         contexts: ['all']
+     });
+     });
+     
+     // 在上下文中点击openSidePanel弹出侧边栏
+     chrome.contextMenus.onClicked.addListener((info, tab) => {
+     if (info.menuItemId === 'openSidePanel') {
+         // This will open the panel in all the pages on the current window.
+         chrome.sidePanel.open({ windowId: tab.windowId });
+     }
+     });
+     ```
+
+     
+
+
+
 # 环境搭建
 
 ## 环境准备
@@ -778,35 +866,36 @@ await chrome.cookies.set({
 
 18. 样式导入到`src/index.js`
 
-    新建`/src/common/css/frame.css`
+     新建`/src/common/css/frame.css`
 
-    ```css
-    @import "./reset.css";
-    @import "./global.css"
-    
-    ```
+     ```css
+     @import "./reset.css";
+     @import "./global.css"
+     
+     ```
 
-    导入`src/index.js`
+     导入`src/index.js`
 
-    ```js
-    import ReactDOM from "react-dom/client";
-    import { ConfigProvider } from "antd";
-    import zhCN from "antd/es/locale/zh_CN";
-    import Popup from "./Popup";
-    import "./index.less";
-    
-    const antdConfig = {
-      locale: zhCN,
-    };
-    
-    const root = ReactDOM.createRoot(document.getElementById("root"));
-    root.render(
-      <ConfigProvider {...antdConfig}>
-        <Popup />
-      </ConfigProvider>
-    );
-    
-    ```
+     ```js
+     import ReactDOM from "react-dom/client";
+     import { ConfigProvider } from "antd";
+     import zhCN from "antd/es/locale/zh_CN";
+     import App from "./App"
+     import "@/common/css/frame.css"
+     
+     const antdConfig = {
+       locale: zhCN,
+     };
+     
+     const root = ReactDOM.createRoot(document.getElementById("root"));
+     root.render(
+       <ConfigProvider {...antdConfig}>
+         <App />
+       </ConfigProvider>
+     );
+     
+     
+     ```
 
 19. 引入antd5.x
 
@@ -824,12 +913,11 @@ await chrome.cookies.set({
 
 ```jsx
 import React from 'react'
-import "./content.less"
-import FloatWindow from './components/FloatWindow'
+import ContentMain from './ContentMain'
 export default function Content() {
   return (
       <div className='CRX-content'>
-          <FloatWindow/>
+          <ContentMain/>
     </div>
   )
 }
@@ -867,6 +955,7 @@ crxContainer.render(<Content />)
  - `webRequest` | `webRequestBlocking` 开放 正在运行请求的 拦截、阻塞、或修改的权限
  - `tts`:允许插件访问浏览器的文本转语音功能，使插件能够将网页上的文本内容转换为语音播放。这个权限可以让插件为用户提供语音阅读网页内容的功能
  - `declarativeContent`:允许插件根据浏览器标签页的内容和URL动态地修改浏览器的外观和行为
+ - `sidePanel`:侧边栏
 
 
 
@@ -1030,4 +1119,39 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
 ```
 
 ## 跨域请求报错
+
+
+
+
+
+## 拉伸屏幕宽度，页面报错
+
+![image-20240627121042399](images/image-20240627121042399.png)
+
+原因：
+
+页面抖动，需要添加防抖动代码
+
+解决方法
+
+```jsx
+import { debounce } from "lodash";
+
+const NativeResizeObserver = window.ResizeObserver;
+
+class DebouncedResizeObserver extends NativeResizeObserver {
+  constructor(callback, options) {
+    const debouncedCallback = debounce(entries => {
+      callback(entries);
+    }, 100);
+
+    super(debouncedCallback, options);
+  }
+}
+
+window.ResizeObserver = DebouncedResizeObserver;
+
+```
+
+
 

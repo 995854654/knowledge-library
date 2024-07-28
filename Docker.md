@@ -388,6 +388,12 @@ ENTRYPOINT
 
 docker build -t yangjj:v1 .
 
+
+
+## 复制容器内的代码
+
+`docker cp <container name>:<code path> <local path>`
+
 ## 自定义DockerFile
 
 查询需要装的系统版本
