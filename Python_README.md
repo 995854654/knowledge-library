@@ -1587,9 +1587,11 @@ SSE (Server- Send- Events)是一种基于HTTP协议的服务端推送技术。
 
 如何实现？
 
-1.   下载`fetch-event-source`: `npm install @microsoft/fetch-event-source`
+1.   FE下载`fetch-event-source`: `npm install @microsoft/fetch-event-source`
 
-2.   二次封装 -- FE：
+2.   BE下载`sse_starlette`: `pip install sse_starlette`
+
+3.   二次封装 -- FE：
 
      ```react
      import { fetchEventSource } from '@microsoft/fetch-event-source'
@@ -1649,7 +1651,7 @@ SSE (Server- Send- Events)是一种基于HTTP协议的服务端推送技术。
      }
      ```
 
-3.   调用该方法 -- FE:
+4.   调用该方法 -- FE:
 
      ```react
      postByEventSource(HTTP_API.qa, {
@@ -1657,10 +1659,10 @@ SSE (Server- Send- Events)是一种基于HTTP协议的服务端推送技术。
      })
      ```
 
-4.   编写SSE代码 -- BE, 以python的FastAPI framework举例
+5.   编写SSE代码 -- BE, 以python的FastAPI framework举例
 
      ```python
-     from fastapi.responses import StreamingResponse
+     from sse_starlette import EventSourceResponse
      chat_router = APIRouter(
          tags=["chat"]
      )
@@ -1669,17 +1671,20 @@ SSE (Server- Send- Events)是一种基于HTTP协议的服务端推送技术。
          logger = LoguruLogger.get_logger()
          logger.info(f"<{token.username}> call qa API, context: {request.context}")
          service = get_chat_service()
-         return StreamingResponse(service.chat_simple_qa(), media_type="text/event-stream")
+         return EventSourceResponse(service.chat_simple_qa())
      
      # service function
-     
+     from sse_starlette import ServerSentEvent
      async def chat_simple_qa(self):
          for i in range(10):
              await asyncio.sleep(1)
-             yield f"""
+             yield ServerSentEvent(
+                 event="test",
+                 data= """
                  如果想要调整单独应用程序的音量大小，只需要右键点击音量图标，然后在弹出菜单中选择“打开音量混合器”菜单项。 
                  4/4 接下来在弹出的音量调节菜单中，就可以的到熟悉的音量调整窗口了，在这里可以单独调整某个应用的音量大小。
-                 """
+                 """,
+             )
      
      ```
 
