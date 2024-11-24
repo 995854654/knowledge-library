@@ -32,7 +32,109 @@ spring:
 3.   lazy:指定组件是否为懒加载，默认false，即容器启动时就会实例化该组件。
 4.   autowire:指定组件的自动装配方式，no（不自动装配）、byType（按类型自动装配）、byName（按名称自动装配）
 
+## AOP切面
 
+### 表达式@Around("@annotation(authCheck)")的含义
+
+在 Spring Boot 中，`@Around("@annotation(authCheck)")` 是一种使用 AOP (面向切面编程) 的切点表达式。具体来说，`@Around` 注解定义了一个环绕通知，而 `@annotation(authCheck)` 是一个切点表达式，用于匹配带有特定注解的方法。下面是对这个表达式的解释：
+
+1.  **@Around**：这是一种通知类型，表示在方法执行之前和之后都可以执行一些特定的操作。环绕通知通常用于请求处理、事务管理或安全检查等场景。
+2.  **@annotation(authCheck)**：这个部分是切点表达式，意思是匹配所有被 `authCheck` 注解标记的方法。在这里，`authCheck` 是一个注解，它可以是你自己定义的注解，用于标记需要进行某种特定授权检查的方法。这使得你能够针对标注了这个注解的方法应用 AOP 逻辑，例如认证、日志、性能监控等。
+
+
+
+## AOP不生效
+
+1.   检查aop表达式是否正确， 
+
+     比如如下代码，我想表达的是com.forty.controller所有类的所有方法。
+
+     但如果表达式是`"execution(* com.forty.controller.*(..))"`,少了一个星号，则匹配不上
+
+     ```java
+     @Slf4j
+     @Aspect
+     @Component
+     public class LogAspect {
+     
+         @Pointcut("execution(* com.forty.controller.*.*(..))")
+         public void pointcut() {}
+     
+         @Before("pointcut()")
+         public void beforeInterceptor(JoinPoint joinPoint) {
+             log.info("audit... " + joinPoint.getSignature().getName());
+         }
+     }
+     
+     ```
+
+2.   检查启动类是否添加注释开启aop. `EnableAspectJAutoProxy`开启aop
+
+     ```java
+     @SpringBootApplication
+     @MapperScan("com.forty.mapper")
+     @EnableAspectJAutoProxy(proxyTargetClass = true, exposeProxy = true)  
+     public class OpenApiBackendApplication {
+     
+         public static void main(String[] args) {
+             SpringApplication.run(OpenApiBackendApplication.class, args);
+         }
+     
+     }
+     ```
+
+
+
+
+## Mybatis-plus自定义mapper函数中如何使用Wrapper
+
+使用场景：
+
+1.   mybatis-plus提供的方法不满足需求，需要自己写一个mapper函数和`mapper.xml`
+2.   想使用现成的Wrapper体系
+
+
+
+步骤：
+
+1.   在mapper接口中定义方法， 使用`@Param(Constants.WRAPPER) QueryWrapper<T> queryWrapper`
+
+     ```java
+     public interface RoleAssignmentMapper extends BaseMapper<RoleAssignment> {
+         List<RoleAssignmentVO> getRoleAssignmentList(@Param(Constants.WRAPPER) QueryWrapper<RoleAssignment> queryWrapper);
+     
+     }
+     
+     ```
+
+2.   在`mapper.xml`文件中使用wrapper， 用`${ew.customSqlSegment}`
+
+     ```java
+     <mapper namespace="com.forty.mapper.RoleAssignmentMapper">
+     
+         <resultMap id="RoleMapResult" type="com.forty.model.vo.RoleAssignmentVO">
+             <result property="roleId" column="role_id" jdbcType="INTEGER"/>
+             <result property="userId" column="user_id" jdbcType="BIGINT"/>
+             <result property="roleName" column="role_name" jdbcType="VARCHAR"/>
+             <result property="userAccount" column="user_account" jdbcType="VARCHAR"/>
+         </resultMap>
+     
+     
+     
+         <select id="getRoleAssignmentList" resultMap="RoleMapResult">
+           select
+               role_assignment.role_id as role_id, role_assignment.user_id as user_id,
+               user_info.user_account as user_account, user_role.role_name as role_name
+           from role_assignment
+           LEFT JOIN user_info ON user_info.id = role_assignment.user_id
+           LEFT JOIN user_role ON user_role.role_id = role_assignment.role_id
+           ${ew.customSqlSegment}
+         </select>
+     </mapper>
+     
+     ```
+
+     
 
 # 环境搭建
 
@@ -49,6 +151,10 @@ spring:
      <img src="images/image-20240218164538433.png" alt="image-20240218164538433" style="zoom:50%;" />
 
      
+
+## 
+
+
 
 
 
@@ -680,4 +786,8 @@ public class UserController {
     }
 }
 ```
+
+
+
+
 
