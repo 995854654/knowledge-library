@@ -431,6 +431,19 @@ RUN ln -sf /usr/share/zoneinfo/${TIME_ZONE} /etc/localtime
 
 ## 问题大全
 
+### Docker安装失败
+
+![image-20241214010156025](images/image-20241214010156025.png)
+
+```bash
+# 解决方法
+yum install --setopt=obsoletes=0 \
+   docker-ce-17.03.2.ce-1.el7.centos.x86_64 \
+   docker-ce-selinux-17.03.2.ce-1.el7.centos.noarch
+```
+
+
+
 ### Error response from daemon: pull access denied for rocketmq, repository does not exist or may require 'docker login'
 
 docker安装rocketmq时提示权限不足

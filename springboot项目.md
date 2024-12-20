@@ -86,7 +86,7 @@ spring:
 
 
 
-## Mybatis-plus自定义mapper函数中如何使用Wrapper
+## Mybatis-plus自定义mapper函数中如何使用Wrapper和Page
 
 使用场景：
 
@@ -97,11 +97,15 @@ spring:
 
 步骤：
 
-1.   在mapper接口中定义方法， 使用`@Param(Constants.WRAPPER) QueryWrapper<T> queryWrapper`
+1.   在mapper接口中定义方法， 使用`@Param(Constants.WRAPPER) QueryWrapper<T> queryWrapper`和`IPage<RoleAssignmentVO> page` (传入后自动开启分页)
 
      ```java
      public interface RoleAssignmentMapper extends BaseMapper<RoleAssignment> {
-         List<RoleAssignmentVO> getRoleAssignmentList(@Param(Constants.WRAPPER) QueryWrapper<RoleAssignment> queryWrapper);
+           List<RoleAssignmentVO> getRoleAssignmentList(
+                 IPage<RoleAssignmentVO> page,
+                 @Param(Constants.WRAPPER) QueryWrapper<RoleAssignment> queryWrapper
+         );
+     
      
      }
      
@@ -134,7 +138,113 @@ spring:
      
      ```
 
+3.   调用
+
+     ```java
+       @Override
+         public Page<RoleAssignmentVO> getUserRoleMapVOList(RoleAssignmentQueryRequest request) {
+             Page<RoleAssignmentVO> roleMapVOPage = new Page<>(request.getCurrentPage(), request.getPageSize());
+             QueryWrapper<RoleAssignment> queryWrapper = new QueryWrapper<>();
+             queryWrapper.like(!StringUtils.isBlank(request.getRoleName()), "role_name", request.getRoleName());
+             queryWrapper.like(!StringUtils.isBlank(request.getUserAccount()), "user_account", request.getUserAccount());
+             List<RoleAssignmentVO> userRoleMapList = this.baseMapper.getRoleAssignmentList(roleMapVOPage, queryWrapper);
+             roleMapVOPage.setRecords(userRoleMapList);
+             roleMapVOPage.setTotal(userRoleMapList.size());
+             return roleMapVOPage;
+         }
+     ```
+
      
+
+## 配置了拦截器和Cors配置后，前端请求出现跨域问题
+
+old：使用Mvc中的跨域配置
+
+```java
+@Override
+    public void addCorsMappings(CorsRegistry registry) {
+        registry.addMapping("/**")
+                .allowCredentials(true)
+                .allowedHeaders("*")
+                // 放行哪些域名
+                .allowedOriginPatterns("*")
+                .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
+                .exposedHeaders("*");
+    }
+}
+```
+
+
+
+new: 使用过滤器的跨域配置
+
+```java
+package com.forty.config;
+
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+import org.springframework.web.filter.CorsFilter;
+
+@Configuration
+public class CorsConfig {
+    @Bean
+    public CorsFilter corsFilter() {
+        CorsConfiguration config = new CorsConfiguration();
+        config.setAllowCredentials(true);
+        config.addAllowedOriginPattern("*");
+        config.addAllowedHeader("*");
+        config.addAllowedMethod("*");
+        config.addExposedHeader("Authorization");
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/**", config);
+        return new CorsFilter(source);
+    }
+}
+
+```
+
+原因： 处理顺序的问题
+
+-   拦截器是用来处理请求和响应的工具，如果在拦截器中对请求做了处理或没有正确放行，可能会影响CORS头的设置，导致跨域问题。拦截器的执行顺序是在所有的CORS配置之前，因此如果拦截器中没有适当处理CORS相关的请求头，会阻碍跨域调用。
+
+
+
+## 日期类型的属性返回只有年月日，缺少时秒分
+
+解决方法： 
+
+1.   使用`java.utils.Date`代替`java.sql.Date`
+
+2.   用了utils.Date后，返回的日期字符串最后带有时区，需要在`application.yaml`中配置，
+
+     ```yaml
+     spring:
+       
+       jackson:
+         #  格式化返回时间 yyyy-MM-dd HH:mm:ss
+         date-format: yyyy-MM-dd HH:mm:ss
+         time-zone: GMT+8
+     ```
+
+     
+
+## Hutool HttpRequest中文乱码
+
+请求头用了中文导致请求头信息乱码， 需要使用Hutool的转换工具
+
+```java
+String hex = "e68891e698afe4b880e4b8aae5b08fe5b08fe79a84e58fafe788b1e79a84e5ad97e7aca6e4b8b2";
+
+//结果为："我是一个小小的可爱的字符串"
+String raw = Convert.hexStrToStr(hex, CharsetUtil.CHARSET_UTF_8);
+
+//注意：在4.1.11之后hexStrToStr将改名为hexToStr
+String raw = Convert.hexToStr(hex, CharsetUtil.CHARSET_UTF_8);
+```
+
+
 
 # 环境搭建
 
@@ -789,5 +899,337 @@ public class UserController {
 
 
 
+## 整合Redis
 
+安装redis
+
+1.   docker 安装redis：`docker pull redis:latest`
+
+2.    新建data文件夹（用于redis持久化）： E:/data/docker/redis/data
+
+3.   新建conf配置文件：E:/data/docker/redis/conf/redis.conf
+
+     ```text
+     bind 0.0.0.0  # 允许远程访问
+     protected-mode no
+     appendonly yes  # 持久化
+     requirepass 123456  # 密码
+     ```
+
+4.   运行指令： `docker run --name redis -p 6379:6379 -v E:/data/docker/redis/data:/data -v E:/data/docker/redis/conf/redis.conf:/etc/redis/redis.conf -d redis:latest redis-server /etc/redis/redis.conf`
+
+引入maven依赖
+
+```xml
+<!-- redis -->
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-data-redis</artifactId>
+</dependency>
+<dependency>
+    <groupId>org.springframework.session</groupId>
+    <artifactId>spring-session-data-redis</artifactId>
+</dependency>
+```
+
+
+
+配置yaml
+
+```yaml
+spring:
+  data:
+    redis:
+      host: 127.0.0.1
+      port: 6379
+      password: 123456
+      lettuce:
+        pool:
+          max-active: 8  # 最大并发连接数
+          max-idle: 8  # 最大空闲连接数
+          min-idle: 5  # 最小空闲连接数
+  session:
+    redis:
+      namespace: "forty:session"  # 定义储存在redis的session数据的命名空间
+      flush-mode: on_save # 每次保存 或更新session时立即将数据同步到Redis中
+      save-mode: always  # 每次请求结束时都保存session
+      
+```
+
+
+
+```java
+// 使用spring session
+ @GetMapping("/getName")
+public String getName(@RequestParam String name, HttpSession session) {
+    session.setAttribute("apiFunctionName", "getName");
+    session.setAttribute("apiNameParams", name);
+    return "GET 你的名字是: " + name;
+}
+```
+
+
+
+## Spring Cloud Gateway
+
+
+### 网关
+
+什么是网关？ 理解成火车站的检票口，统一检票
+
+网关的优点：统一去进行一些操作，处理一些问题
+
+作用：
+
+1. 路由
+2. 统一鉴权
+3. 统一跨域
+4. 缓存
+5. 流量染色
+6. 访问控制
+7. 统一业务处理
+8. 发布控制
+9. 脱敏
+10. 负载均衡
+11. 接口保护
+    - 限制请求
+    - 脱敏
+    - 降级（熔断）: [CircuitBreaker GatewayFilter Factory :: Spring Cloud Gateway](https://docs.spring.io/spring-cloud-gateway/reference/spring-cloud-gateway/gatewayfilter-factories/circuitbreaker-filter-factory.html)
+    - 限流: 学习令牌桶算法，学习漏桶算法，学习RedisLimitHandler [RequestRateLimiter GatewayFilter Factory :: Spring Cloud Gateway](https://docs.spring.io/spring-cloud-gateway/reference/spring-cloud-gateway/gatewayfilter-factories/requestratelimiter-factory.html)
+    - 超时时间
+12. 统一日志
+13. 统一文档
+
+#### 路由
+
+起到转发作用，比如有接口A和接口B，网关会记录这些信息，根据用户访问的地址和参数，转发请求到对应的接口（服务器/集群）
+/a => 接口A
+
+/b => 接口B
+
+#### 负载均衡
+
+在路由的基础上，
+
+/c => 服务A / 集群A（随机转发到其中一个机器）
+
+#### 统一鉴权
+
+判断用户是否有权限操作， 无论访问什么接口，都统一访问权限，不需要重写
+
+#### 统一跨域
+
+网关统一处理跨域
+
+#### 统一业务处理（缓存）
+
+把一些每个项目中都要做的通用逻辑放到上层（网关），比如：项目中的统一次数
+
+### 核心概念
+
+路由(Route)（根据什么条件，转发请求到哪里）
+
+断言（Predicate）： 一组规则、条件，用来确定如何转发路由
+
+-   After： 在xx时间之后
+-   Before：在xx时间之前
+-   Between： 在xx时间内
+-   请求类别
+-   请求头
+-   权重
+-   Host
+-   Path
+-   查询参数
+-   ...
+
+过滤器： 对请求进行一系列的处理，比如添加请求头，添加请求参数
+
+
+
+### 运行流程
+
+1.   客户端发起请求
+2.   Handler Mapping： 根据断言，去将请求转发到对应路由
+3.   Web Handler： 处理请求
+
+![image-20241205170238698](images/image-20241205170238698.png)
+
+### 路由配置
+
+1.   配置式（方便，规范）
+     1.   简化版
+     2.   全称
+2.   编程式
+
+配置式
+
+```yaml
+# 让gateway日志等级最低
+logging:
+  level:
+    org:
+      springframework:
+        cloud:
+          gateway: trace
+```
+
+
+
+
+
+### 全局异常处理
+
+注意： 
+
+1.   spring cloud gateway是基于Web Flux框架，所以不适用于ControllerAdvice
+2.   gateway里抛的异常，全局异常器可以捕获，但微服务中抛出的异常，网关中无法捕获，需要走其他途径
+
+
+
+实现过程 - 全局拦截gateway异常
+
+
+
+
+
+## RPC
+
+需求点：
+
+怎么调用其他项目的方法
+
+1.   复制代码和依赖
+2.   HTTP请求
+3.   RPC
+4.   把公共包打jar包，其他项目引入
+
+
+
+RPC作用：像调用本地方法那样调用远程方法
+
+1.   对开发者比较透明，减少了很多沟通成本
+2.   RPC向远程服务器发送请求时， 未必要使用HTTP协议，比如可以使用TCP/ IP， 性能更高。（内部服务更适用）
+
+![image-20241207211003770](images/image-20241207211003770.png)
+
+## Dubbo框架（RPC实现）
+
+GRPC(谷歌)、TRPC(腾讯的)
+
+[创建基于Spring Boot的微服务应用 | Apache Dubbo](https://cn.dubbo.apache.org/zh-cn/overview/mannual/java-sdk/quick-start/starter/)
+
+两种使用方式：
+
+1.   Spring Boot代码： 写Java接口偶偶，服务提供者和消费者都去引用这个接口
+2.   IDL（接口调用语言）： 创建一个公共的接口定义文件，服务提供者和消费者读取这个文件。优点：跨语言，所有框架都认识
+
+建议使用Nacos
+
+注意：
+
+1.   服务接口类必须要在同一个包下，建议是抽象出一个公共项目（放接口、实体类邓）
+2.   设置注解
+3.   添加配置
+
+
+
+
+
+
+
+## Nacos
+
+### nacos整合配置文件
+
+
+
+[Nacos的基本使用之配置管理 - wenxuehai - 博客园](https://www.cnblogs.com/wenxuehai/p/16188419.html)
+
+![image-20241216155413367](images/image-20241216155413367.png)
+
+![image-20241216160000830](images/image-20241216160000830.png)	
+
+
+
+## RocketMQ
+
+官网： https://rocketmq.apache.org/zh/docs
+
+作用： [RocketMQ_详细配置与使用详解_rocketmq配置-CSDN博客](https://blog.csdn.net/chuige2013/article/details/144150864)
+
+1.   应用解耦
+2.   流量削峰
+3.   数据分发
+
+系统拓扑简单、上下游耦合较弱，主要应用于异步解耦，流量削峰填谷
+
+默认端口： 9876
+
+启动nameserver: `nohup sh bin/mqnamesrv &`  9876端口
+
+启动Broker + Proxy：`nohup sh bin/mqbroker -n localhost:9876 --enable-proxy &` 对外暴露8081端口， 同时占用8080
+
+停止nameserver: `sh bin/mqshutdown namesrv`
+
+停止broker：`sh bin/mqshutdown broker`
+
+创建topic指令：`sh bin/mqadmin updateTopic -c DefaultCluster -t backendTopic -n 127.0.0.1:9876`
+
+>    NOTE: 需要先停止broker，再停止nameserver
+
+
+
+简单示例
+
+```java
+// SimpleConsumer
+
+
+@Slf4j
+public class RocketSimpleConsumer {
+    public static void main(String[] args) throws ClientException {
+        // 使用SimpleConsumer消费普通消息，主动获取消息处理并提交
+        // 接入点地址，需要设置成Proxy的地址和端口列表，一般是xxx:8080;xxx:8081。
+        String endpoint = "192.168.5.100:8081";
+        ClientServiceProvider provider = ClientServiceProvider.loadService();
+        String topic = "backendTopic";
+        String consumerGroup = "MyConsumerGroup";
+        String tagName = "log";
+        FilterExpression filterExpression = new FilterExpression(tagName, FilterExpressionType.TAG);
+        SimpleConsumer simpleConsumer = provider.newSimpleConsumerBuilder()
+                .setConsumerGroup(consumerGroup)
+                // 设置接入点
+                .setClientConfiguration(ClientConfiguration.newBuilder().setEndpoints(endpoint).build())
+                // 设置预绑定的订阅关系
+                .setSubscriptionExpressions(Collections.singletonMap(topic, filterExpression))
+                // 设置从服务端接受消息的最大等待时间
+                .setAwaitDuration(Duration.ofSeconds(30))
+                .build();
+
+        try{
+            // SimpleConsumer主动获取消息，并处理
+            List<MessageView> messageViewList = simpleConsumer.receive(10, Duration.ofSeconds(30));
+            messageViewList.forEach(messageView -> {
+                System.out.println(messageView);
+                //  获取body
+                ByteBuffer byteBuffer = messageView.getBody();
+                byte[] bodyBytes = new byte[byteBuffer.remaining()];
+                byteBuffer.get(bodyBytes);
+                String bodyString = new String(bodyBytes, StandardCharsets.UTF_8);
+                System.out.println(bodyString);
+                try {
+                    simpleConsumer.ack(messageView);
+                } catch (ClientException e) {
+                    log.error("Failed to ack message, messageId={}", messageView.getMessageId(), e);
+                }
+            });
+
+        }catch (ClientException e) {
+            // 如果遇到系统流控等原因造成拉取失败，需要重新发起获取消息请求。
+            log.error("Failed to receive message", e);
+        }
+    }
+}
+
+```
 
